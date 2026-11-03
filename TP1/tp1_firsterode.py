@@ -17,3 +17,12 @@ def first_dilate(im):
             im_out[i,j] = np.max(im[i-1:i+2, j-1:j+2])
     return im_out
 
+def my_gradient(im):
+    return first_erode(im) - first_erode(im)
+
+
+im = cv2.imread("Images/kingdom.png", cv2.IMREAD_GRAYSCALE)
+cv2.imshow("im", im)
+cv2.waitKey(0)
+
+

@@ -1,3 +1,4 @@
+"""
 import numpy as np
 import cv2
 im = cv2.imread("Images/parrot.jpg", cv2.IMREAD_GRAYSCALE)
@@ -11,3 +12,12 @@ im[im>=100] = 255
 cv2.imshow("perroquet",im)
 cv2.waitKey(0)
 #cv2.imwrite("Images/parrot2.jpg",im)
+"""
+import cv2
+from Commun import strel, morpho
+
+g8 = strel.build("carre", 1)
+
+g4 = strel.build("diamant", 1)
+
+
