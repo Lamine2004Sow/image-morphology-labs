@@ -1,7 +1,6 @@
 import cv2
 import numpy
 
-from TP5.tp5_exo1 import mask
 
 
 def myerode(im, el):
