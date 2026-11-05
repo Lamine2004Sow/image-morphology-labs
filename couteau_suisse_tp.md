@@ -24,6 +24,7 @@ Source des définitions : le cours *Morphological Image Analysis* (J. Chaussard)
 | Supprimer les objets qui **touchent le bord** | reconstruction depuis le cadre | 17 | [→ Grains du bord](#s17) |
 | Mesurer la **longueur** et l'**orientation** d'un objet | érosions par une ligne, tous les angles | 18 | [→ Longueur et orientation](#s18) |
 | Afficher une mesure **en couleur** (bleu = petit, rouge = grand) | normalisation + `COLORMAP_JET` | 19 | [→ Cartes en couleur](#s19) |
+| Repérer les grains **non conformes** (cassés, collés, déformés) | ellipsoïdalité : aire observée contre aire d'une ellipse | 20 | [→ Ellipsoïdalité](#s20) |
 
 ---
 
@@ -729,7 +730,7 @@ mini_o = 0
 maxi_o = 179
 carte_orientation = numpy.uint8((carte_orientation - mini_o) / (maxi_o - mini_o) * 255)
 ```
-**Attention :** 0° et 179° sont presque la même direction mais auront des couleurs opposées (bleu et rouge). Pour une colormap cyclique, utiliser `cv2.COLORMAP_HSV`.
+**Attention :** 0° et 179° sont presque la même direction, mais avec `COLORMAP_JET` elles auraient des couleurs opposées (bleu et rouge). Dans `tp5_riz.py`, on utilise donc la colormap cyclique `cv2.COLORMAP_HSV` pour l'orientation : la couleur de 179° rejoint celle de 0°.
 
 ### Pièges
 - Si **toutes** les cartes sont à 0 (mesure non faite), `numpy.min(carte[carte>0])` plante : « zero-size array ».
@@ -737,7 +738,76 @@ carte_orientation = numpy.uint8((carte_orientation - mini_o) / (maxi_o - mini_o)
 
 ---
 
-## 20. Rendu JARVIS / Moodle
+<a id="s20"></a>
+## 20. Repérer les grains non conformes : l'ellipsoïdalité (TP5)
+
+**Idée :** un bon grain de riz ressemble à une **ellipse**. On compare l'**aire réelle** du grain à l'**aire qu'aurait une ellipse** de même longueur et de même épaisseur. Si les deux s'accordent, le grain est conforme ; sinon, il est cassé, collé à un autre ou déformé.
+
+```
+Les deux mesures que l'on a déjà             Ellipse de même longueur L et même épaisseur W
+
+        longueur L = 2a                              ___________
+   ┌──────────────────────┐                       ,-'           '-.      W = 2b  (épaisseur)
+   │   grain de riz       │ épaisseur W = 2b     (                 )
+   └──────────────────────┘                       '-.___________.-'
+                                                     aire = π · a · b = π · (L/2) · (W/2)
+
+Cas typiques :                          aire observée                aire d'une ellipse L×W
+  grain normal                          ≈ celle de l'ellipse         → rapport proche de la valeur typique
+  grain CASSÉ (court, petit)            trop petite                  → rapport faible
+  DEUX GRAINS collés (long, gros)       trop grande (≈ le double)    → rapport élevé
+```
+
+### Pourquoi nos deux mesures correspondent aux axes de l'ellipse
+| Ellipse | Notre mesure |
+|---|---|
+| grand axe `2a` | **longueur** : la plus longue ligne qui rentre dans le grain (section 18) |
+| petit axe `2b` | **épaisseur** : le plus grand disque qui rentre dans le grain (section 13) |
+
+Pour une vraie ellipse, la plus longue ligne qui rentre est bien le grand axe, et le plus grand disque inscrit a bien pour diamètre le petit axe.
+
+### Le calcul
+```
+aire_theorique = π × (ep/2) × (long/2)          ep et long sont des DIAMÈTRES (2×rayon) → on divise par 2
+aire_observee  = nombre de pixels du grain       (somme des pixels / 255, car un pixel de grain vaut 255)
+coefficient    = aire_observee / aire_theorique
+ellipsoidalite = log(coefficient)²
+```
+- **Pourquoi le logarithme ?** Il rend les écarts symétriques : un grain deux fois trop grand (rapport 2) et un grain deux fois trop petit (rapport 1/2) sont aussi « anormaux » l'un que l'autre, et ont `log(2)` et `log(1/2) = −log(2)`.
+- **Pourquoi le carré ?** Il supprime le signe : seul compte **l'écart**, qu'il soit trop grand ou trop petit. Résultat toujours ≥ 0, plus il est grand, plus le grain s'éloigne d'une ellipse.
+
+```python
+import math
+
+aire_theorique = ep/2 * long/2 * math.pi
+aire_observee = numpy.sum(grain)/255
+ellipsoidalite = math.log(aire_observee/aire_theorique)**2
+
+carte_ellipsoidalite[grain>0] = ellipsoidalite        # puis normalisation + COLORMAP_JET (section 19)
+```
+Dans la carte, les grains **bleus** sont proches d'une ellipse (valeur proche de 0) et les **rouges** s'en éloignent le plus.
+
+### Ce qu'on observe sur `rice.png` (70 grains)
+- Un grain normal n'a **pas** un rapport de 1 : la médiane du rapport `aire_observee / aire_theorique` est d'environ **1,26**. Les extrémités d'un grain sont plus carrées que celles d'une ellipse, donc l'aire réelle dépasse celle de l'ellipse (cause non vérifiée en détail).
+- L'amas de **deux grains collés** ressort à environ **1,57** (longueur 42, aire 404) : c'est la tache rouge foncé de la carte.
+- Conséquence : pour décider qu'un grain est anormal, on se compare à la **valeur typique** (médiane), pas à 1. Un seuil vers 1,45 à 1,5 isole l'amas sans toucher aux autres.
+
+### Lien avec le critère R du sujet
+Le sujet demande `R = (1 − l_mesurée / l_estimée)²`, où `l_estimée` est la longueur déduite de l'aire en supposant une ellipse. En inversant `aire = π·L·W/4` on obtient `l_estimée = 4·aire / (π·W)`, donc :
+```
+l_mesurée / l_estimée = π·L·W / (4·aire) = 1 / coefficient       →   R = (1 − 1/coefficient)²
+```
+C'est le même principe que `log(coefficient)²` : un écart au carré autour d'une valeur de référence. (Cette formule de `l_estimée` est déduite de la géométrie de l'ellipse, pas lue dans le sujet : à vérifier avec le cours.)
+
+### Pièges
+- `math.log` plante si `aire_observee` vaut 0 (grain vide) : ne peut pas arriver pour un grain reconstruit, il contient au moins un pixel.
+- Ne pas comparer à 1 : la valeur « normale » est celle de la majorité des grains (≈ 1,26 ici).
+- Un grain **cassé** reste elliptique : il peut passer inaperçu avec ce critère seul. Le compléter avec la longueur ou l'aire.
+- L'orientation de l'ellipse ne dit rien sur la conformité : elle ne sert pas ici.
+
+---
+
+## 21. Rendu JARVIS / Moodle
 
 ### Règles générales (valables pour tous les TP)
 - **Arguments en ligne de commande** (JARVIS lance `python3 prog.py ...`) :
@@ -772,11 +842,11 @@ Le fond reste à **0** partout. C'est une normalisation **affine** vers `[bas, h
 ```python
 gris = bas + (valeur - mini) / (maxi - mini) * (haut - bas)
 ```
-Le critère `R = (1 − l_mesurée / l_estimée)²` compare la longueur mesurée par la ligne (section 18) à celle de l'approximation par une ellipse : un grain dont la forme s'éloigne d'une ellipse a un `R` grand.
+Le critère `R = (1 − l_mesurée / l_estimée)²` compare la longueur mesurée par la ligne (section 18) à celle de l'approximation par une ellipse : un grain dont la forme s'éloigne d'une ellipse a un `R` grand. Détail du calcul en section 20.
 
 ---
 
-## 21. Pièges à retenir (liste de contrôle)
+## 22. Pièges à retenir (liste de contrôle)
 
 - [ ] `uint8` : `-` reboucle, `cv2.subtract` sature à 0.
 - [ ] Bord de l'image : ajouter un cadre noir avant de mesurer par érosion.
@@ -785,5 +855,6 @@ Le critère `R = (1 − l_mesurée / l_estimée)²` compare la longueur mesurée
 - [ ] `cv2.waitKey(0)` et `imshow` : à enlever pour JARVIS.
 - [ ] Lire les arguments avec `sys.argv`, afficher uniquement ce qui est demandé.
 - [ ] Taille de l'élément structurant : plus grand que les objets à supprimer / mesurer.
-- [ ] Deux grains qui se touchent sont comptés comme un seul.
+- [ ] Deux grains qui se touchent sont comptés comme un seul (ils ressortent avec une ellipsoïdalité élevée).
+- [ ] Ellipsoïdalité : comparer à la valeur typique des grains, pas à 1 ; `ep` et `long` sont des diamètres, diviser par 2.
 - [ ] Nom du zip et fichier principal exactement comme demandé.

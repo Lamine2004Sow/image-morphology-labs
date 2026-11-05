@@ -1,4 +1,4 @@
-import cv2, numpy
+import cv2, numpy, math
 from Commun import morpho, strel, myutil
 from Commun import myutil
 import sys
@@ -74,6 +74,7 @@ im = r3.copy()
 carte_epaisseur = numpy.zeros(im.shape, numpy.float64)
 carte_longueur = numpy.zeros(im.shape, numpy.float64)
 carte_orientation = numpy.zeros(im.shape, numpy.float64)
+carte_ellipsoidalite = numpy.zeros(im.shape, numpy.float64)
 cpt=0
 for x in range(0, im.shape[0]):
     for y in range(0, im.shape[1]):
@@ -82,11 +83,26 @@ for x in range(0, im.shape[0]):
             grain = morpho.myreconinf(im, m, g4)
             im = im - grain
             cpt+=1
+
+            #calcul des epaisseur et longueurs
             ep = mesurer_epaisseur(grain)
             long,orient = mesurer_longueur(grain)
+
+            #Calcul du coefficient d'ellipsoidalité de notre forme : on compare l'aire réellement observée du grain
+            #à l'aire qu'aurait une ellipse de même longueur et de même épaisseur (pi * demi-grand axe * demi-petit axe).
+            #ep et long sont des diamètres (2*rayon), on divise donc par 2 pour avoir les demi-axes.
+            #Un grain en forme d'ellipse donne un coefficient proche de 1 ; un grain cassé, tordu ou formé de deux grains
+            #collés s'en éloigne.
+            aire_theorique = ep/2 * long/2 * math.pi
+            aire_observee = numpy.sum(grain)/255
+            ellipsoidalite = math.log(aire_observee/aire_theorique)**2
+
+            print(ellipsoidalite)
+
             carte_epaisseur[grain>0] = ep
             carte_longueur[grain>0] = long
             carte_orientation[grain>0] = orient
+            carte_ellipsoidalite[grain>0] = ellipsoidalite
             print(long, orient)
             #cv2.imshow("grain", grain)
             #cv2.waitKey(0)
@@ -132,10 +148,25 @@ carte_orientation = cv2.applyColorMap(carte_orientation, cv2.COLORMAP_HSV)
 #dans l'image d'origine
 carte_orientation[r3==0]=imcolor[r3==0]
 
+#Phase de normalisation de carte ellipsoidalité : on cherche la valeur max des ellipsoidalités (= valeur max de l'image)
+#ainsi que la valeur min des ellipsoidalités (n'est pas la valeur min de l'image car la valeur min de l'image, c'est le fond)
+maxi_c = numpy.max(carte_ellipsoidalite)
+mini_c = numpy.min(carte_ellipsoidalite[carte_ellipsoidalite>0])
+#On réalise la normalisation pour avoir des valeur entières entre 0 et 255
+carte_ellipsoidalite = numpy.uint8((carte_ellipsoidalite - mini_c)/(maxi_c-mini_c)*255)
+#On applique la colormap pour avoir une image en couleur : les grains les plus proches d'une ellipse (valeur proche de 0, car
+#le log est mis au carré) seront bleus et ceux qui s'en éloignent le plus (aire observée trop grande ou trop petite) seront rouges
+carte_ellipsoidalite = cv2.applyColorMap(carte_ellipsoidalite, cv2.COLORMAP_JET)
+#On colorie manuellement les pixels du fond (qui n'ont pas d'ellipsoidalité) en noir ou, comme ici, avec leur niveau de gris
+#dans l'image d'origine
+carte_ellipsoidalite[r3==0]=imcolor[r3==0]
+
 #cv2.imshow("Carte Epaisseur", carte_epaisseur)
 cv2.imshow("Carte Longueur", carte_longueur)
 cv2.imshow("Carte Orientation", carte_orientation)
+cv2.imshow("Carte Ellipsoidalite", carte_ellipsoidalite)
 cv2.imwrite("cartepaisseur.png", carte_epaisseur)
 cv2.imwrite("cartelongueur.png", carte_longueur)
 cv2.imwrite("carteorientation.png", carte_orientation)
+cv2.imwrite("carteellipsoidalite.png", carte_ellipsoidalite)
 cv2.waitKey(0)
