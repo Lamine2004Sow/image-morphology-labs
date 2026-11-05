@@ -22,11 +22,15 @@ PYTHONPATH=.. python3 riz.py Images/rice.png r s
 | Dossier | Contenu |
 |---------|---------|
 | `Commun/` | Package partagé : `strel` (éléments structurants), `morpho` (érosion, dilatation, gradient, ouverture, fermeture, dilatation conditionnelle, reconstruction), `myutil.py` (seuillage) |
-| `TP1/` | Découverte d'OpenCV, première érosion/dilatation codée à la main, gradient morphologique sur webcam virtuelle |
+| `TP1/` | Découverte d'OpenCV, première érosion/dilatation codée à la main, gradient morphologique sur webcam ou vidéo |
 | `TP2/` | Recherche de la direction des fibres du papier par gradient avec un élément structurant ligne orienté |
 | `TP3/` | Top-hat : taille des grains de riz, extraction du texte sur fond non uniforme |
 | `TP4/` | Extraction des pistes d'aéroport par fermetures directionnelles, puis nettoyage ouverture/fermeture |
-| `TP5/` | Reconstruction morphologique, ouverture et fermeture conditionnelles |
+| `TP5/` | Reconstruction morphologique, ouverture et fermeture conditionnelles, comptage et caractérisation des grains de riz (épaisseur, longueur, orientation, ellipsoïdalité) |
+
+## Documentation
+
+`couteau_suisse_tp.md` est un aide-mémoire de TP1 à TP5 : pour chaque outil (érosion, ouverture, top-hat, reconstruction, mesures sur les grains...), l'idée, un schéma, le pourquoi, le code et les pièges, avec un tableau « je veux... » qui renvoie à la bonne section.
 
 ## Scripts en ligne de commande
 
@@ -39,4 +43,10 @@ python3 riz.py Images/rice.png r s
 
 # TP4 : pistes d'aéroport (l = longueur ligne, s = seuil, r = rayon nettoyage)
 python3 aeroport.py Images/aeroport1.png l s r sortie.png
+
+# TP5 : cartes en couleur des grains de riz (épaisseur, longueur, orientation, ellipsoïdalité)
+# Pas d'argument : lit ../TP3/Images/rice.png, ouvre des fenêtres (touche pour quitter)
+# et écrit les cartes en .png dans le dossier courant
+cd TP5
+PYTHONPATH=.. python3 tp5_riz.py
 ```
