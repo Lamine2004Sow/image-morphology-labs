@@ -47,6 +47,7 @@ valeur
    0 +---------------------------> position (une ligne de l'image)
 ```
 
+<a id="lire-afficher"></a>
 ### Lire, afficher, écrire (OpenCV)
 ```python
 import cv2, numpy
@@ -60,6 +61,7 @@ cv2.imwrite("sortie.png", im)
 ### Canaux couleur (TP2)
 `im[:, :, 0]` = bleu, `im[:, :, 1]` = vert, `im[:, :, 2]` = rouge. On garde le canal où l'objet ressort le mieux du fond.
 
+<a id="piege-uint8"></a>
 ### Piège n°1 : les `uint8` rebouclent
 `3 - 5` donne `254` sur un `uint8`, pas `-2`. Pour soustraire deux images :
 - si on sait que `A >= B` (top hat, bottom hat), le `-` est sûr ;
@@ -67,6 +69,7 @@ cv2.imwrite("sortie.png", im)
 
 ---
 
+<a id="s2"></a>
 ## 2. Éléments structurants (`strel`)
 
 **Idée :** c'est la « forme sonde » qu'on promène sur l'image. Le résultat dépend entièrement de cette forme.
@@ -807,6 +810,7 @@ C'est le même principe que `log(coefficient)²` : un écart au carré autour d'
 
 ---
 
+<a id="s21"></a>
 ## 21. Rendu JARVIS / Moodle
 
 ### Règles générales (valables pour tous les TP)
@@ -848,13 +852,15 @@ Le critère `R = (1 − l_mesurée / l_estimée)²` compare la longueur mesurée
 
 ## 22. Pièges à retenir (liste de contrôle)
 
-- [ ] `uint8` : `-` reboucle, `cv2.subtract` sature à 0.
-- [ ] Bord de l'image : ajouter un cadre noir avant de mesurer par érosion.
-- [ ] Les images flottantes ne s'affichent pas : convertir en `uint8`.
-- [ ] OpenCV charge en **BGR**, pas RGB.
-- [ ] `cv2.waitKey(0)` et `imshow` : à enlever pour JARVIS.
-- [ ] Lire les arguments avec `sys.argv`, afficher uniquement ce qui est demandé.
-- [ ] Taille de l'élément structurant : plus grand que les objets à supprimer / mesurer.
-- [ ] Deux grains qui se touchent sont comptés comme un seul (ils ressortent avec une ellipsoïdalité élevée).
-- [ ] Ellipsoïdalité : comparer à la valeur typique des grains, pas à 1 ; `ep` et `long` sont des diamètres, diviser par 2.
-- [ ] Nom du zip et fichier principal exactement comme demandé.
+Chaque ligne renvoie vers la solution (clique sur le lien).
+
+- [ ] `uint8` : `-` reboucle, `cv2.subtract` sature à 0. → [solution : `cv2.subtract` et cas où on peut soustraire directement](#piege-uint8)
+- [ ] Bord de l'image : ajouter un cadre noir avant de mesurer par érosion. → [solution : `copyMakeBorder`](#s13)
+- [ ] Les images flottantes ne s'affichent pas : convertir en `uint8`. → [solution : normalisation de la carte](#s19)
+- [ ] OpenCV charge en **BGR**, pas RGB. → [solution : ordre des canaux](#lire-afficher)
+- [ ] `cv2.waitKey(0)` et `imshow` : à enlever pour JARVIS. → [solution : règles du rendu](#s21)
+- [ ] Lire les arguments avec `sys.argv`, afficher uniquement ce qui est demandé. → [solution : arguments et affichage](#s21)
+- [ ] Taille de l'élément structurant : plus grand que les objets à supprimer / mesurer. → [solution : règle de choix de la taille](#s8) et [choix de l'élément](#s2)
+- [ ] Deux grains qui se touchent sont comptés comme un seul (ils ressortent avec une ellipsoïdalité élevée). → [solution : repérer ces grains](#s20) et [limite du comptage](#s15)
+- [ ] Ellipsoïdalité : comparer à la valeur typique des grains, pas à 1 ; `ep` et `long` sont des diamètres, diviser par 2. → [solution : le calcul pas à pas](#s20)
+- [ ] Nom du zip et fichier principal exactement comme demandé. → [solution : nom du zip et appels demandés](#s21)
