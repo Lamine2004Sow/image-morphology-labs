@@ -21,7 +21,7 @@ PYTHONPATH=.. python3 riz.py Images/rice.png r s
 
 | Dossier | Contenu |
 |---------|---------|
-| `Commun/` | Package partagé : `strel` (éléments structurants), `morpho` (érosion, dilatation, gradient, ouverture, fermeture, dilatation conditionnelle, reconstruction), `myutils` (seuillage) |
+| `Commun/` | Package partagé : `strel` (éléments structurants), `morpho` (érosion, dilatation, gradient, ouverture, fermeture, dilatation conditionnelle, reconstruction), `myutil.py` (seuillage) |
 | `TP1/` | Découverte d'OpenCV, première érosion/dilatation codée à la main, gradient morphologique sur webcam virtuelle |
 | `TP2/` | Recherche de la direction des fibres du papier par gradient avec un élément structurant ligne orienté |
 | `TP3/` | Top-hat : taille des grains de riz, extraction du texte sur fond non uniforme |
