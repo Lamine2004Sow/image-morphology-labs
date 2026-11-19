@@ -27,10 +27,11 @@ PYTHONPATH=.. python3 riz.py Images/rice.png r s
 | `TP3/` | Top-hat : taille des grains de riz, extraction du texte sur fond non uniforme |
 | `TP4/` | Extraction des pistes d'aéroport par fermetures directionnelles, puis nettoyage ouverture/fermeture |
 | `TP5/` | Reconstruction morphologique, ouverture et fermeture conditionnelles, comptage et caractérisation des grains de riz (épaisseur, longueur, orientation, ellipsoïdalité) |
+| `TP6/` | Ligne de partage des eaux : séparation forêt / bitume sur une route à partir de marqueurs, puis délimitation de pièces qui se touchent (ASF, carte de distance, h-maxima, étiquetage des marqueurs) |
 
 ## Documentation
 
-`couteau_suisse_tp.md` est un aide-mémoire de TP1 à TP5 : pour chaque outil (érosion, ouverture, top-hat, reconstruction, mesures sur les grains...), l'idée, un schéma, le pourquoi, le code et les pièges, avec un tableau « je veux... » qui renvoie à la bonne section.
+`couteau_suisse_tp.md` est un aide-mémoire de TP1 à TP6 : pour chaque outil (érosion, ouverture, top-hat, reconstruction, mesures sur les grains, ligne de partage des eaux, h-maxima...), l'idée, un schéma, le pourquoi, le code et les pièges, avec un tableau « je veux... » qui renvoie à la bonne section.
 
 ## Scripts en ligne de commande
 
@@ -49,4 +50,9 @@ python3 aeroport.py Images/aeroport1.png l s r sortie.png
 # et écrit les cartes en .png dans le dossier courant
 cd TP5
 PYTHONPATH=.. python3 tp5_riz.py
+
+# TP6 : ligne de partage des eaux (pas d'argument, ouvre des fenêtres)
+cd TP6
+PYTHONPATH=.. python3 route.py    # frontière forêt / bitume en rouge sur Images/route.png
+PYTHONPATH=.. python3 pieces.py   # bords des pièces de Images/coins.jpg en rouge, puis une couleur par pièce
 ```

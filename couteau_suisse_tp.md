@@ -1,4 +1,4 @@
-# Couteau suisse — Morphologie mathématique (TP1 → TP5)
+# Couteau suisse — Morphologie mathématique (TP1 → TP6)
 
 Pour chaque outil : **l'idée en une phrase**, **un schéma**, **pourquoi ça marche**, **le code**, **les pièges**.
 Les fonctions viennent du package `Commun/` (`strel.py`, `morpho.py`, `myutil.py`).
@@ -25,6 +25,11 @@ Source des définitions : le cours *Morphological Image Analysis* (J. Chaussard)
 | Mesurer la **longueur** et l'**orientation** d'un objet | érosions par une ligne, tous les angles | 18 | [→ Longueur et orientation](#s18) |
 | Afficher une mesure **en couleur** (bleu = petit, rouge = grand) | normalisation + `COLORMAP_JET` | 19 | [→ Cartes en couleur](#s19) |
 | Repérer les grains **non conformes** (cassés, collés, déformés) | ellipsoïdalité : aire observée contre aire d'une ellipse | 20 | [→ Ellipsoïdalité](#s20) |
+| **Séparer** deux objets / tracer leur **frontière** à partir de marqueurs | ligne de partage des eaux (inondation du gradient) | 21 | [→ Ligne de partage des eaux](#s21) |
+| Connaître la **distance au fond** de chaque pixel d'un objet | carte de distance par érosions successives | 22 | [→ Carte de distance](#s22) |
+| Trouver **un marqueur par objet**, même collés (pièces) | h-maxima de la carte de distance | 23 | [→ H-maxima](#s23) |
+| Donner un **niveau de gris différent** à chaque composante | étiquetage par reconstruction + marqueur du fond | 24 | [→ Étiqueter les marqueurs](#s24) |
+| Délimiter des objets **qui se touchent** (pièces) | ASF + seuil + distance + h-maxima + LPE | 25 | [→ Chaîne complète pièces](#s25) |
 
 ---
 
@@ -811,7 +816,220 @@ C'est le même principe que `log(coefficient)²` : un écart au carré autour d'
 ---
 
 <a id="s21"></a>
-## 21. Rendu JARVIS / Moodle
+## 21. Ligne de partage des eaux (TP6 — `TP6/route.py`)
+
+**Idée :** on voit le **gradient** comme un relief. Les bords des objets sont des **crêtes**, l'intérieur des objets des **vallées**. On pose une source d'eau (un **marqueur**) dans chaque objet et on inonde, en commençant toujours par le point le plus bas. Les eaux de deux marqueurs se rencontrent sur les crêtes : c'est la **ligne de partage des eaux** (LPE).
+
+```
+Gradient vu de profil (une ligne de l'image)
+
+altitude                crête = bord entre les deux objets
+   ▲                          /\
+   │      ~~~~~~~~~~~~~~~~~~ /  \ ≈≈≈≈≈≈≈≈≈≈≈≈≈
+   │     ~~~~~~~~~~~~~~~~~~~/    \≈≈≈≈≈≈≈≈≈≈≈≈≈≈
+   │  ___~~~~~~~~~~~~~~~~~~/      \≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈___
+   └──────────M1───────────────────────M2──────────────▶
+          marqueur forêt (~)       marqueur bitume (≈)
+   Chaque eau monte depuis son marqueur ; elles se rencontrent sur la crête.
+```
+
+### L'algorithme (inondation par ordre d'altitude)
+```
+1. m = image de marqueurs : 0 = pas encore inondé, sinon le niveau de gris de l'objet (100, 200...)
+2. L = tous les pixels marqués, triés par altitude g (valeur du gradient)
+3. tant que L n'est pas vide :
+     on sort le pixel le plus BAS
+     pour chaque voisin (Γ8) dans l'image et pas encore inondé (m == 0) :
+         il prend l'étiquette du pixel  → m[voisin] = m[pixel]
+         on l'insère dans L à sa place selon son altitude
+4. à la fin, tous les pixels ont une étiquette ; la frontière = là où l'étiquette change
+```
+
+```python
+g = morpho.mygradient(im, strel.build("carre", 1))     # le relief
+el = strel.build_as_list("carre", 1)                   # Γ8 en liste de coordonnées (dy, dx)
+
+m = numpy.zeros_like(im)                               # UNE seule image de marqueurs
+m[foret > 0] = 100                                     # un niveau de gris par objet
+m[bitume > 0] = 200
+
+L = []
+lignes, colonnes = numpy.nonzero(m)
+for l, c in zip(lignes, colonnes):
+    L.append((l, c, g[l, c]))
+L.sort(key = lambda elem:elem[2])                      # trié par altitude
+
+while len(L) > 0:
+    ligne, colonne, valeur = L.pop(0)                  # le plus bas
+    for el_ligne, el_colonne in el:
+        ligne_voisin = ligne + el_ligne
+        colonne_voisin = colonne + el_colonne
+        if 0 <= ligne_voisin < g.shape[0] and 0 <= colonne_voisin < g.shape[1] and m[ligne_voisin, colonne_voisin] == 0:
+            m[ligne_voisin, colonne_voisin] = m[ligne, colonne]
+            bisect.insort(L, (ligne_voisin, colonne_voisin, g[ligne_voisin, colonne_voisin]), key = lambda elem:elem[2])
+```
+
+### Afficher la frontière en rouge
+```python
+g2 = morpho.mygradient(m, strel.build("carre", 1))     # non nul seulement là où l'étiquette change
+imcouleur = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)       # GRAY → BGR pour avoir 3 canaux
+imcouleur[g2 > 0] = [0, 0, 255]                        # rouge en BGR
+```
+
+### File de priorité ou liste de listes ? (question du sujet)
+Les altitudes sont des `uint8` : il n'y a que **256 valeurs possibles**. Une **liste de 256 listes** (une par altitude, chacune traitée dans l'ordre d'arrivée) suffit donc : on ajoute un pixel en fin de la liste de son altitude, et on vide les listes de 0 à 255. Pas besoin d'une vraie file de priorité. Dans le code du cours, on garde une seule liste triée avec `bisect.insort`, plus simple à écrire mais plus lent.
+
+### Pièges
+- **Sortie de l'image** : sans le test `0 <= ... < shape`, un voisin à `-1` ne plante pas en numpy, il **revient de l'autre côté** de l'image. Un voisin à `shape[0]` plante (`IndexError`).
+- **`COLOR_BGR2GRAY` au lieu de `COLOR_GRAY2BGR`** : erreur OpenCV « Invalid number of channels ... scn is 1 » (l'image est déjà en gris).
+- **`imshow` sans image** (`cv2.imshow("Resultat",)`) : il faut le nom de la fenêtre **et** l'image.
+- **`bisect.insort(..., key=...)`** n'existe qu'à partir de Python 3.10.
+- **Lenteur** : `L.pop(0)` décale toute la liste à chaque tour. Pour suivre l'avancement on peut afficher un pourcentage tous les 1000 pixels.
+- Le sujet impose **une seule image de marqueurs**, chaque objet avec son propre niveau de gris.
+
+---
+
+<a id="s22"></a>
+## 22. Carte de distance par érosions successives (TP6 — pièces)
+
+**Idée :** la distance d'un pixel au fond, c'est le rayon du disque qui le fait disparaître. On érode par des disques de plus en plus grands ; les pixels qui disparaissent au rayon `r` reçoivent la valeur `r`. Même principe que l'épaisseur ([section 13](#s13)), mais on garde la valeur **pour chaque pixel**.
+
+```
+Pièce binaire s              Carte de distance
+ . . . . . . . . .            0 0 0 0 0 0 0 0 0
+ . X X X X X X X .            0 2 2 2 2 2 2 2 0
+ . X X X X X X X .   ──▶      0 2 3 3 3 3 3 2 0       le centre a la plus grande valeur
+ . X X X X X X X .            0 2 3 4 4 4 3 2 0       → sommet d'une montagne
+ . X X X X X X X .            0 2 3 3 3 3 3 2 0
+ . . . . . . . . .            0 0 0 0 0 0 0 0 0
+```
+
+```python
+distance = numpy.zeros_like(im)
+er1 = s                                    # pour que la boucle démarre
+rayon = 2
+while numpy.sum(er1) > 0:
+    er2 = er1                              # l'érosion du tour précédent (rayon-1) : on ne la recalcule pas
+    er1 = morpho.myerode(s, strel.build("disque", rayon))
+    pixels_interessants = er2 - er1        # ce qui vient de disparaître
+    distance[pixels_interessants > 0] = rayon
+    rayon += 1
+```
+- **`er2 = er1`** : une seule érosion par tour au lieu de deux.
+- **`er1 = s` au départ** : le premier tour compare `s` à son érosion de rayon 2, donc les pixels du bord reçoivent 2 (aucun pixel de pièce ne reste à 0).
+- `er2 - er1` ne reboucle pas : `er1` est inclus dans `er2`, donc la différence est toujours ≥ 0.
+- La carte est « très proche » de la vraie distance euclidienne (tronquée à l'entier), comme le demande le sujet.
+- Pour l'afficher, elle est sombre (max ≈ 76 sur 255) : multiplier pour la voir.
+
+---
+
+<a id="s23"></a>
+## 23. H-maxima : un marqueur par objet (TP6 — pièces)
+
+**Idée :** chaque pièce est une **montagne** de la carte de distance. On garde seulement le **haut** de chaque montagne, sur une hauteur `h`. Deux pièces collées ont deux sommets séparés par un **col** : si chaque sommet dépasse le col d'au moins `h`, on obtient deux marqueurs séparés.
+
+```
+Carte de distance (profil de 2 pièces collées)
+
+   ▲   sommet A            sommet B
+   │     /\                 /\
+   │    /  \      col      /  \          ── distance
+   │   /    \____/\_______/    \
+   │  /                         \
+   └─────────────────────────────────▶
+
+Étape 1 : distance2 = distance - h        (tout est abaissé de h)
+Étape 2 : distance3 = reconstruction inférieure de distance2 sous distance
+          → l'eau remonte partout sauf sur les sommets, qui restent h plus bas
+Étape 3 : distance4 = distance - distance3
+          → 0 partout, sauf en haut des montagnes (jusqu'à h au sommet)
+
+   ▲    __                  __
+   │   /  \                /  \          ── distance4 : deux petits chapeaux = deux marqueurs
+   └──────────────────────────────▶
+```
+
+```python
+h = 10
+distance2 = numpy.copy(distance)
+distance2[distance2 < h] = h               # sinon distance2 - h reboucle (uint8) !
+distance2 = distance2 - h
+
+distance3 = morpho.myreconinf(distance, distance2, g8)   # ref = distance, marqueur = distance2
+
+distance4 = distance - distance3
+marqueurs = myutil.seuil(distance4, h-3)   # on ne garde que le haut des chapeaux
+```
+- **Rôle de `h`** : trop petit, une pièce bosselée donne plusieurs marqueurs ; trop grand, deux pièces collées n'en donnent qu'un. C'est un argument du rendu.
+- **`distance2[distance2 < h] = h`** avant la soustraction : piège `uint8` ([section 1](#piege-uint8)).
+- Pour choisir le seuil, `myutil.myseuil_interactif(distance4)` (à commenter ensuite). Sur `coins.jpg` avec `h = 10` : 8 marqueurs pour 8 pièces.
+
+---
+
+<a id="s24"></a>
+## 24. Étiqueter les marqueurs et marquer le fond (TP6 — pièces)
+
+**Idée :** les marqueurs sont binaires (tous à 255), mais la LPE veut **un niveau de gris par objet**. On extrait chaque composante connexe par reconstruction (comme le comptage des grains, [section 15](#s15)) et on lui donne un numéro. Le fond reçoit son propre marqueur : le **cadre** de l'image.
+
+```
+marqueurs (binaire)          m (étiqueté)
+ . . . . . . . .              1 1 1 1 1 1 1 1     ← cadre = fond (1)
+ . X . . . . . .              1 2 . . . . . 1
+ . . . . . X X .     ──▶      1 . . . . 3 3 1     ← une valeur par pièce (2, 3, ...)
+ . . . . . . . .              1 1 1 1 1 1 1 1
+```
+
+```python
+m = numpy.zeros_like(im)
+tmp = numpy.zeros_like(im)
+cpt = 2                                    # 0 = pas encore inondé, 1 = fond, 2... = les pièces
+for x in range(0, marqueurs.shape[0]):
+    for y in range(0, marqueurs.shape[1]):
+        if marqueurs[x, y] > 0:
+            tmp[x, y] = 255
+            comp_connexe = morpho.myreconinf(marqueurs, tmp, g8)
+            marqueurs = marqueurs - comp_connexe      # on la retire pour ne pas la recompter
+            m[comp_connexe > 0] = cpt
+            cpt += 1
+
+m[0, :] = 1                                # le fond : le cadre de l'image
+m[:, 0] = 1
+m[-1, :] = 1
+m[:, -1] = 1
+```
+- `tmp` n'est pas remis à zéro, mais la reconstruction est limitée par `marqueurs` : les pixels des composantes déjà retirées disparaissent tout seuls.
+- **Sans marqueur du fond**, les pièces envahissent tout le fond pendant l'inondation.
+- Le cadre ne marche que si **aucun objet ne touche le bord**.
+- Avec des `uint8`, au plus 254 objets (valeurs 2 à 255).
+
+---
+
+<a id="s25"></a>
+## 25. Chaîne complète : délimiter les pièces (TP6 — `TP6/pieces.py`)
+
+```
+coins.jpg ─▶ ASF par reconstruction ─▶ fermeture ─▶ seuil ─▶ carte de ─▶ h-maxima ─▶ étiquetage ─▶ LPE ─▶ bords
+             (15 étapes, disques)      (ombres)    (156)    distance    (h = 10)    + fond = 1     sur g    en rouge
+             efface les détails                                                                  
+```
+
+| Étape | Pourquoi |
+|---|---|
+| ASF par reconstruction (disques de rayon 2 à 15) | efface les motifs gravés sur les pièces sans déformer leur contour ([section 16](#s16)) |
+| Fermeture (disque de rayon 3) | bouche l'**ombre** fine entre deux pièces superposées, sinon le seuil les couperait |
+| Seuil | pièces en blanc, fond en noir |
+| Carte de distance + h-maxima | un marqueur au centre de chaque pièce, même collées ([22](#s22), [23](#s23)) |
+| Étiquetage + cadre | une valeur par pièce, 1 pour le fond ([24](#s24)) |
+| LPE sur le gradient | la frontière tombe sur les bords des pièces ([21](#s21)) |
+
+- **Sur quelle image calculer le gradient ?** Le sujet demande l'image **où les détails sont effacés** (`resultat_asf`) : les gravures des pièces feraient des crêtes parasites. Sur `coins.jpg`, le gradient de `im` donne un résultat proche, mais le bord entre deux pièces collées est un peu plus propre avec `resultat_asf`.
+- Résultat sur `coins.jpg` : 8 pièces, toutes délimitées, y compris celles qui se touchent.
+- Affichage bonus : une couleur aléatoire par pièce (`imcouleur[m == i] = (random.randint(0,255), ...)`). Attention, ça écrase l'image aux bords rouges : faire l'`imwrite` du rendu **avant**.
+
+---
+
+<a id="s26"></a>
+## 26. Rendu JARVIS / Moodle
 
 ### Règles générales (valables pour tous les TP)
 - **Arguments en ligne de commande** (JARVIS lance `python3 prog.py ...`) :
@@ -824,7 +1042,7 @@ s = int(sys.argv[3])
 - **Pas de `imshow` / `waitKey`** dans le rendu : le programme attendrait une touche indéfiniment.
 - **Afficher uniquement ce qui est demandé** (pas de texte en plus).
 - Zip `Nom_Prenom_NumeroEtudiant.zip` (pas d'accents ni de ponctuation), avec à la racine le fichier principal + le dossier `Commun/` (`__init__.py`, `morpho.py`, `strel.py`, `myutil.py`). Ni images, ni `venv`, ni `__pycache__`.
-- Adresse JARVIS : `chaussard.laga+image_tpN@gmail.com` (N = numéro du TP).
+- Adresse JARVIS : `chaussard.laga+image_tpN@gmail.com` (N = numéro du TP). Au TP6 : `image_tp6route` pour `lpe.py` et `image_tp6pieces` pour `pieces.py`.
 
 > ⚠️ Les sujets (TP4) parlent de **`myutils.py`** alors que notre fichier s'appelle `myutil.py`. Les imports `from Commun import myutil` doivent correspondre au nom **réel** du fichier dans le zip. À vérifier avant l'envoi.
 
@@ -834,6 +1052,8 @@ s = int(sys.argv[3])
 | TP3 | `riz.py` | `python3 riz.py image.png r s` → affiche l'épaisseur |
 | TP4 | `aeroport.py` | `python3 aeroport.py input.png l s r output.png` |
 | TP5 | `riz.py` | `python3 riz.py entree.png sortie1.png sortie2.png sortie3.png r s` |
+| TP6 | `lpe.py` | `python3 lpe.py image_entree.png marqueur1.png marqueur2.png sortie.png` |
+| TP6 | `pieces.py` | `python3 pieces.py image_entree.png seuil rayon h sortie.png` |
 
 ### Sorties demandées au TP5 : niveaux de gris imposés
 | Image | Contenu | Valeur min → niveau de gris | Valeur max → niveau de gris |
@@ -850,7 +1070,7 @@ Le critère `R = (1 − l_mesurée / l_estimée)²` compare la longueur mesurée
 
 ---
 
-## 22. Pièges à retenir (liste de contrôle)
+## 27. Pièges à retenir (liste de contrôle)
 
 Chaque ligne renvoie vers la solution (clique sur le lien).
 
@@ -858,9 +1078,13 @@ Chaque ligne renvoie vers la solution (clique sur le lien).
 - [ ] Bord de l'image : ajouter un cadre noir avant de mesurer par érosion. → [solution : `copyMakeBorder`](#s13)
 - [ ] Les images flottantes ne s'affichent pas : convertir en `uint8`. → [solution : normalisation de la carte](#s19)
 - [ ] OpenCV charge en **BGR**, pas RGB. → [solution : ordre des canaux](#lire-afficher)
-- [ ] `cv2.waitKey(0)` et `imshow` : à enlever pour JARVIS. → [solution : règles du rendu](#s21)
-- [ ] Lire les arguments avec `sys.argv`, afficher uniquement ce qui est demandé. → [solution : arguments et affichage](#s21)
+- [ ] `cv2.waitKey(0)` et `imshow` : à enlever pour JARVIS. → [solution : règles du rendu](#s26)
+- [ ] Lire les arguments avec `sys.argv`, afficher uniquement ce qui est demandé. → [solution : arguments et affichage](#s26)
 - [ ] Taille de l'élément structurant : plus grand que les objets à supprimer / mesurer. → [solution : règle de choix de la taille](#s8) et [choix de l'élément](#s2)
 - [ ] Deux grains qui se touchent sont comptés comme un seul (ils ressortent avec une ellipsoïdalité élevée). → [solution : repérer ces grains](#s20) et [limite du comptage](#s15)
 - [ ] Ellipsoïdalité : comparer à la valeur typique des grains, pas à 1 ; `ep` et `long` sont des diamètres, diviser par 2. → [solution : le calcul pas à pas](#s20)
-- [ ] Nom du zip et fichier principal exactement comme demandé. → [solution : nom du zip et appels demandés](#s21)
+- [ ] Nom du zip et fichier principal exactement comme demandé. → [solution : nom du zip et appels demandés](#s26)
+- [ ] LPE : tester que le voisin est dans l'image (un indice `-1` revient de l'autre côté sans erreur). → [solution : l'algorithme](#s21)
+- [ ] Image grise vers couleur : `COLOR_GRAY2BGR` (et pas `BGR2GRAY`) avant de colorier en rouge. → [solution : frontière en rouge](#s21)
+- [ ] LPE : une seule image de marqueurs, un niveau par objet, et un marqueur pour le fond. → [solution : étiquetage](#s24)
+- [ ] H-maxima : `distance2[distance2<h] = h` avant `- h`, sinon l'`uint8` reboucle. → [solution : h-maxima](#s23)

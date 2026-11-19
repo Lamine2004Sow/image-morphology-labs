@@ -8,7 +8,7 @@ import math
 #You need to choose the type (disk, square, diamond, line)
 #Then give the size and, in the case of the line, the angle
 #The structuring element is returned as a list of coordinates
-def build_as_list(type, size, angle):
+def build_as_list(type, size, angle=None):
     if type in ['disque', 'disk']:
         Strel = [] #The result will be a list of coordinates
         #Scan all x and y coordinates from -size to size to test if the pixel is at a distance less than size of the center.
