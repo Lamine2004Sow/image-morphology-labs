@@ -1,4 +1,4 @@
-# Couteau suisse — Morphologie mathématique (TP1 → TP6)
+# Couteau suisse — Morphologie mathématique (TP1 → TP7)
 
 Pour chaque outil : **l'idée en une phrase**, **un schéma**, **pourquoi ça marche**, **le code**, **les pièges**.
 Les fonctions viennent du package `Commun/` (`strel.py`, `morpho.py`, `myutil.py`).
@@ -30,6 +30,8 @@ Source des définitions : le cours *Morphological Image Analysis* (J. Chaussard)
 | Trouver **un marqueur par objet**, même collés (pièces) | h-maxima de la carte de distance | 23 | [→ H-maxima](#s23) |
 | Donner un **niveau de gris différent** à chaque composante | étiquetage par reconstruction + marqueur du fond | 24 | [→ Étiqueter les marqueurs](#s24) |
 | Délimiter des objets **qui se touchent** (pièces) | ASF + seuil + distance + h-maxima + LPE | 25 | [→ Chaîne complète pièces](#s25) |
+| Rendre visible une image **trop claire / trop sombre** (peu de contraste) | égalisation d'histogramme | 26 | [→ Égalisation](#s26) |
+| Égaliser une image **couleur** sans fausser les couleurs | HSV : on égalise seulement V | 26 | [→ Égalisation couleur](#s26-couleur) |
 
 ---
 
@@ -62,9 +64,11 @@ cv2.imshow("titre", im)
 cv2.waitKey(0)            # attend une touche — À ENLEVER dans le rendu JARVIS
 cv2.imwrite("sortie.png", im)
 ```
+Si le fichier n'est pas trouvé, `imread` **ne plante pas** : il renvoie `None`, et l'erreur arrive plus loin (`imshow` : « size.width>0 && size.height>0 »). Sous Linux, les noms sont sensibles à la casse : `Images/` et `images/` sont deux dossiers différents (sous Windows, chez le prof, ça passe).
 
 ### Canaux couleur (TP2)
 `im[:, :, 0]` = bleu, `im[:, :, 1]` = vert, `im[:, :, 2]` = rouge. On garde le canal où l'objet ressort le mieux du fond.
+On peut aussi traiter chaque canal et le réécrire dans une image de sortie : `sortie[:, :, 0] = f(im[:, :, 0])` (TP7, [section 26](#s26-couleur)).
 
 <a id="piege-uint8"></a>
 ### Piège n°1 : les `uint8` rebouclent
@@ -1029,7 +1033,89 @@ coins.jpg ─▶ ASF par reconstruction ─▶ fermeture ─▶ seuil ─▶ car
 ---
 
 <a id="s26"></a>
-## 26. Rendu JARVIS / Moodle
+## 26. Égalisation d'histogramme (TP7 — `TP7/equilibre_histo.py`)
+
+**Idée :** une image trop claire (`chambre.png`) n'utilise qu'une petite partie des niveaux de gris (ici de 150 à 210). On **étale** ses niveaux sur tout l'intervalle 0-255, de façon à ce que chaque niveau soit à peu près aussi utilisé que les autres.
+
+```
+Histogramme H (combien de pixels par niveau)       Histogramme cumulé SomH (pixels ≤ niveau)
+
+ nb                                                 nb
+  ▲        ▆█▅                                       N ▲              ________
+  │       ▂████▃                                       │            _/
+  │      ▁██████▂                                      │          _/
+  └──────────────────────▶ niveau                      └─────────/──────────▶ niveau
+  0     150   210      255                              0     150   210   255
+  (tout est tassé à droite)
+
+Nouvelle valeur d'un pixel :   sortie = 255 / N × SomH[valeur]      (N = nombre de pixels)
+→ le pixel le plus sombre part vers 0, le plus clair va à 255, et les niveaux très peuplés sont écartés.
+```
+
+```python
+def equilibre_histo(im):
+    N = im.shape[0] * im.shape[1]                      # nombre de pixels
+
+    Hp = cv2.calcHist([im], [0], None, [256], [0, 255])  # histogramme : Hp[i] = nb de pixels de valeur i
+
+    SomHp = [Hp[0]]                                    # histogramme cumulé
+    sum = Hp[0]
+    imsortie = numpy.zeros_like(im)
+
+    for i in range(1, 256):
+        sum += Hp[i]
+        SomHp.append(sum)
+
+    for l in range(0, im.shape[0]):
+        for c in range(0, im.shape[1]):
+            imsortie[l, c] = 255 / N * SomHp[im[l, c]]
+
+    return imsortie
+```
+
+### Pièges
+- **`sum` doit commencer à `Hp[0]`**, pas à 0 : sinon toutes les sommes cumulées oublient les pixels noirs, et la sortie n'atteint pas 255.
+- **`[0, 255]` dans `calcHist`** : la borne de fin est en principe **exclue**, donc `[0, 256]` est plus sûr pour compter aussi les pixels à 255.
+- La fonction attend **un seul canal** : lui donner une image couleur n'égalise pas la couleur.
+- Le sujet appelle la fonction `egalhisto` et le fichier de rendu `egal.py` (voir [section 27](#s27)).
+
+<a id="s26-couleur"></a>
+### Image couleur : canaux séparés ou HSV ?
+
+**1. On égalise chacun des 3 canaux B, G, R séparément** (`cerises.jpg`) :
+```python
+sortie = numpy.zeros_like(im)
+sortie[:, :, 0] = equilibre_histo(im[:, :, 0])   # bleu
+sortie[:, :, 1] = equilibre_histo(im[:, :, 1])   # vert
+sortie[:, :, 2] = equilibre_histo(im[:, :, 2])   # rouge
+```
+**Ce qu'on constate :** l'image est plus claire, mais les **couleurs sont fausses** (le fond noir devient bleu-vert, les cerises virent au rose). Chaque canal est étiré de son côté, donc la **proportion** entre B, G et R d'un pixel change, et sa teinte avec. Pas satisfaisant.
+
+**2. On passe en HSV et on n'égalise que V** (`chat.jpg`) :
+```
+H (teinte)      = QUELLE couleur (rouge, vert...)     → on n'y touche pas
+S (saturation)  = couleur vive ou délavée              → on n'y touche pas
+V (valeur)      = clair ou sombre                      → c'est LUI qu'on égalise
+```
+```python
+sortie = numpy.zeros_like(im)
+im = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
+
+sortie[:, :, 0] = im[:, :, 0]                      # H recopié
+sortie[:, :, 1] = im[:, :, 1]                      # S recopié
+sortie[:, :, 2] = equilibre_histo(im[:, :, 2])     # V égalisé
+
+sortie = cv2.cvtColor(sortie, cv2.COLOR_HSV2BGR)   # retour en BGR pour imshow / imwrite
+```
+**Résultat :** le contraste est amélioré et les couleurs restent les mêmes. C'est la bonne méthode.
+
+- **Ne pas égaliser H** : la teinte est un angle (0 à 179 dans OpenCV), l'étaler n'a pas de sens et change toutes les couleurs.
+- **Penser au `COLOR_HSV2BGR`** avant d'afficher : `imshow` interprète toujours les 3 canaux comme du BGR.
+
+---
+
+<a id="s27"></a>
+## 27. Rendu JARVIS / Moodle
 
 ### Règles générales (valables pour tous les TP)
 - **Arguments en ligne de commande** (JARVIS lance `python3 prog.py ...`) :
@@ -1042,7 +1128,7 @@ s = int(sys.argv[3])
 - **Pas de `imshow` / `waitKey`** dans le rendu : le programme attendrait une touche indéfiniment.
 - **Afficher uniquement ce qui est demandé** (pas de texte en plus).
 - Zip `Nom_Prenom_NumeroEtudiant.zip` (pas d'accents ni de ponctuation), avec à la racine le fichier principal + le dossier `Commun/` (`__init__.py`, `morpho.py`, `strel.py`, `myutil.py`). Ni images, ni `venv`, ni `__pycache__`.
-- Adresse JARVIS : `chaussard.laga+image_tpN@gmail.com` (N = numéro du TP). Au TP6 : `image_tp6route` pour `lpe.py` et `image_tp6pieces` pour `pieces.py`.
+- Adresse JARVIS : `chaussard.laga+image_tpN@gmail.com` (N = numéro du TP). Au TP6 : `image_tp6route` pour `lpe.py` et `image_tp6pieces` pour `pieces.py`. Au TP7 : `image_tp7egal` pour `egal.py`.
 
 > ⚠️ Les sujets (TP4) parlent de **`myutils.py`** alors que notre fichier s'appelle `myutil.py`. Les imports `from Commun import myutil` doivent correspondre au nom **réel** du fichier dans le zip. À vérifier avant l'envoi.
 
@@ -1054,6 +1140,8 @@ s = int(sys.argv[3])
 | TP5 | `riz.py` | `python3 riz.py entree.png sortie1.png sortie2.png sortie3.png r s` |
 | TP6 | `lpe.py` | `python3 lpe.py image_entree.png marqueur1.png marqueur2.png sortie.png` |
 | TP6 | `pieces.py` | `python3 pieces.py image_entree.png seuil rayon h sortie.png` |
+| TP7 | `egal.py` | `python3 egal.py image_entree.png sortie.png` (égalisation d'une image en niveaux de gris) |
+| TP7 | `otsu.py` | `python3 otsu.py image_entree.png` → affiche seulement la valeur du seuil |
 
 ### Sorties demandées au TP5 : niveaux de gris imposés
 | Image | Contenu | Valeur min → niveau de gris | Valeur max → niveau de gris |
@@ -1070,7 +1158,7 @@ Le critère `R = (1 − l_mesurée / l_estimée)²` compare la longueur mesurée
 
 ---
 
-## 27. Pièges à retenir (liste de contrôle)
+## 28. Pièges à retenir (liste de contrôle)
 
 Chaque ligne renvoie vers la solution (clique sur le lien).
 
@@ -1078,13 +1166,16 @@ Chaque ligne renvoie vers la solution (clique sur le lien).
 - [ ] Bord de l'image : ajouter un cadre noir avant de mesurer par érosion. → [solution : `copyMakeBorder`](#s13)
 - [ ] Les images flottantes ne s'affichent pas : convertir en `uint8`. → [solution : normalisation de la carte](#s19)
 - [ ] OpenCV charge en **BGR**, pas RGB. → [solution : ordre des canaux](#lire-afficher)
-- [ ] `cv2.waitKey(0)` et `imshow` : à enlever pour JARVIS. → [solution : règles du rendu](#s26)
-- [ ] Lire les arguments avec `sys.argv`, afficher uniquement ce qui est demandé. → [solution : arguments et affichage](#s26)
+- [ ] `cv2.waitKey(0)` et `imshow` : à enlever pour JARVIS. → [solution : règles du rendu](#s27)
+- [ ] Lire les arguments avec `sys.argv`, afficher uniquement ce qui est demandé. → [solution : arguments et affichage](#s27)
 - [ ] Taille de l'élément structurant : plus grand que les objets à supprimer / mesurer. → [solution : règle de choix de la taille](#s8) et [choix de l'élément](#s2)
 - [ ] Deux grains qui se touchent sont comptés comme un seul (ils ressortent avec une ellipsoïdalité élevée). → [solution : repérer ces grains](#s20) et [limite du comptage](#s15)
 - [ ] Ellipsoïdalité : comparer à la valeur typique des grains, pas à 1 ; `ep` et `long` sont des diamètres, diviser par 2. → [solution : le calcul pas à pas](#s20)
-- [ ] Nom du zip et fichier principal exactement comme demandé. → [solution : nom du zip et appels demandés](#s26)
+- [ ] Nom du zip et fichier principal exactement comme demandé. → [solution : nom du zip et appels demandés](#s27)
 - [ ] LPE : tester que le voisin est dans l'image (un indice `-1` revient de l'autre côté sans erreur). → [solution : l'algorithme](#s21)
 - [ ] Image grise vers couleur : `COLOR_GRAY2BGR` (et pas `BGR2GRAY`) avant de colorier en rouge. → [solution : frontière en rouge](#s21)
 - [ ] LPE : une seule image de marqueurs, un niveau par objet, et un marqueur pour le fond. → [solution : étiquetage](#s24)
 - [ ] H-maxima : `distance2[distance2<h] = h` avant `- h`, sinon l'`uint8` reboucle. → [solution : h-maxima](#s23)
+- [ ] Égalisation : histogramme cumulé qui commence à `Hp[0]`, et `[0, 256]` dans `calcHist`. → [solution : égalisation](#s26)
+- [ ] Égalisation couleur : en HSV, n'égaliser que V, puis `COLOR_HSV2BGR` avant d'afficher. → [solution : HSV](#s26-couleur)
+- [ ] Linux est sensible à la casse : `Images/` et `images/` sont deux dossiers différents (`imread` renvoie `None` sans erreur). → [solution : lire une image](#lire-afficher)
