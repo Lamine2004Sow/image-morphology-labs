@@ -20,7 +20,7 @@ def equilibre_histo(im):
 
     return imsortie
 #im = cv2.imread("Images/chat.jpg")
-im = cv2.imread("Images/chat.jpg    ")
+im = cv2.imread("Images/chat.jpg")
 cv2.imshow("Image", im)
 sortie = numpy.zeros_like(im)
 im = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
