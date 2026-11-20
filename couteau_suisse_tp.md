@@ -1052,6 +1052,34 @@ Nouvelle valeur d'un pixel :   sortie = 255 / N × SomH[valeur]      (N = nombre
 → le pixel le plus sombre part vers 0, le plus clair va à 255, et les niveaux très peuplés sont écartés.
 ```
 
+### Calculer et afficher un histogramme (OpenCV, cours TP7)
+```python
+histo = cv2.calcHist([im], [0], None, [256], [0, 256])     # im à UN canal ; histo[i] = nb de pixels de valeur i
+hr = cv2.calcHist([im[:, :, 2]], [0], None, [256], [0, 256])   # image couleur : un canal à la fois (ici le rouge)
+
+from matplotlib import pyplot as plt                       # pour le voir comme une courbe
+plt.plot(histo)
+plt.xlim([0, 256])
+plt.show()
+```
+- Les **crochets** autour de chaque paramètre sont obligatoires.
+- `None` : on peut y mettre un **masque** binaire pour ne compter qu'une zone de l'image.
+
+### Pourquoi l'histogramme cumulé ? (cours, « approche par le continu »)
+On cherche une transformation `T` des niveaux de gris telle que l'histogramme de sortie soit **plat** : chaque niveau de `[qmin, qmax]` reçoit autant de pixels, `N / (qmax − qmin)`.
+- `T` doit être **croissante** (`x1 ≤ x2 → T(x1) ≤ T(x2)`) : un pixel plus clair qu'un autre le reste, on ne mélange pas l'image.
+- Avec cette contrainte, les pixels de valeur `≤ x` doivent aller exactement vers les sorties `≤ T(x)`. On égalise donc les deux nombres de pixels :
+```
+pixels de l'entrée ≤ x   =   pixels de la sortie ≤ T(x)
+       SomH(x)           =   N / (qmax − qmin) × (T(x) − qmin)
+
+  →   T(x) = qmin + (qmax − qmin) / N × SomH(x)        avec qmin = 0, qmax = 255 :   T(x) = 255 / N × SomH(x)
+```
+La transformation **est** l'histogramme cumulé, remis à l'échelle 0-255.
+
+### Pourquoi le résultat n'est pas parfaitement plat ?
+En discret, tous les pixels d'un même niveau vont vers **le même** niveau de sortie : on ne peut pas couper une barre de l'histogramme en deux. On **écarte** les barres (des trous apparaissent entre elles) et on peut en **fusionner** plusieurs, mais jamais en créer. C'est l'histogramme **cumulé** de la sortie qui devient presque une droite.
+
 ```python
 def equilibre_histo(im):
     N = im.shape[0] * im.shape[1]                      # nombre de pixels
@@ -1073,9 +1101,18 @@ def equilibre_histo(im):
     return imsortie
 ```
 
+### Les astuces du code
+- **`SomHp[im[l, c]]`** : on n'applique pas une formule pixel par pixel, on **lit** dans la table `SomHp` (calculée une seule fois pour les 256 niveaux). C'est une table de correspondance (LUT).
+- **`255 / N`** : la remise à l'échelle de la formule du cours, pour que le dernier niveau tombe sur 255 (`SomHp[255] = N`).
+
+### Ce qu'on observe sur `chambre.png`
+- Entrée : niveaux de **150 à 210** (61 niveaux différents). Sortie : de **0 à 255**, avec **54** niveaux différents (des niveaux peu peuplés ont fusionné).
+- Histogramme cumulé de la sortie : 25 % des pixels sous 64, 50 % sous 128, 76 % sous 192 → presque une droite, l'histogramme est bien égalisé.
+
 ### Pièges
 - **`sum` doit commencer à `Hp[0]`**, pas à 0 : sinon toutes les sommes cumulées oublient les pixels noirs, et la sortie n'atteint pas 255.
-- **`[0, 255]` dans `calcHist`** : la borne de fin est en principe **exclue**, donc `[0, 256]` est plus sûr pour compter aussi les pixels à 255.
+- **`[0, 255]` dans `calcHist`** : la borne de fin est **exclue**. Mesuré sur une image `[0, 128, 255, 255]` : avec `[0, 255]` l'histogramme ne compte que 2 pixels (les deux 255 disparaissent), avec `[0, 256]` il en compte 4. Le cours écrit bien `[0, 256]`.
+- **`sum` est un nom de fonction Python** (`sum(...)`) : l'utiliser comme variable la masque dans toute la fonction. Sans conséquence ici, mais `cumul` serait plus sûr.
 - La fonction attend **un seul canal** : lui donner une image couleur n'égalise pas la couleur.
 - Le sujet appelle la fonction `egalhisto` et le fichier de rendu `egal.py` (voir [section 27](#s27)).
 
@@ -1089,7 +1126,7 @@ sortie[:, :, 0] = equilibre_histo(im[:, :, 0])   # bleu
 sortie[:, :, 1] = equilibre_histo(im[:, :, 1])   # vert
 sortie[:, :, 2] = equilibre_histo(im[:, :, 2])   # rouge
 ```
-**Ce qu'on constate :** l'image est plus claire, mais les **couleurs sont fausses** (le fond noir devient bleu-vert, les cerises virent au rose). Chaque canal est étiré de son côté, donc la **proportion** entre B, G et R d'un pixel change, et sa teinte avec. Pas satisfaisant.
+**Ce qu'on constate (réponse à la question 2) :** l'image est plus claire, mais les **couleurs sont fausses** (le fond noir devient bleu-vert, les cerises virent au rose). Chaque canal est étiré de son côté, donc la **proportion** entre B, G et R d'un pixel change, et sa teinte avec. Pas satisfaisant.
 
 **2. On passe en HSV et on n'égalise que V** (`chat.jpg`) :
 ```
@@ -1107,7 +1144,16 @@ sortie[:, :, 2] = equilibre_histo(im[:, :, 2])     # V égalisé
 
 sortie = cv2.cvtColor(sortie, cv2.COLOR_HSV2BGR)   # retour en BGR pour imshow / imwrite
 ```
-**Résultat :** le contraste est amélioré et les couleurs restent les mêmes. C'est la bonne méthode.
+**Résultat (réponse à la question 3) :** le contraste est amélioré et les couleurs restent les mêmes. C'est la bonne méthode.
+
+### Ce qu'on observe sur `cerises.jpg` (mesuré)
+| | Canaux B, G, R séparés | HSV, seulement V |
+|---|---|---|
+| Luminosité moyenne V (entrée : 19 sur 255) | 173 | 130,5 |
+| Décalage médian de la teinte H (sur 180) | **6** | **0** |
+| Couleurs | faussées | conservées |
+
+Le décalage de teinte est mesuré sur les pixels assez colorés (S > 50 et V > 30), en comparant H avant et après.
 
 - **Ne pas égaliser H** : la teinte est un angle (0 à 179 dans OpenCV), l'étaler n'a pas de sens et change toutes les couleurs.
 - **Penser au `COLOR_HSV2BGR`** avant d'afficher : `imshow` interprète toujours les 3 canaux comme du BGR.
@@ -1177,5 +1223,6 @@ Chaque ligne renvoie vers la solution (clique sur le lien).
 - [ ] LPE : une seule image de marqueurs, un niveau par objet, et un marqueur pour le fond. → [solution : étiquetage](#s24)
 - [ ] H-maxima : `distance2[distance2<h] = h` avant `- h`, sinon l'`uint8` reboucle. → [solution : h-maxima](#s23)
 - [ ] Égalisation : histogramme cumulé qui commence à `Hp[0]`, et `[0, 256]` dans `calcHist`. → [solution : égalisation](#s26)
+- [ ] Nom de fichier avec des espaces en trop (`"Images/chat.jpg    "`) : `imread` renvoie `None` sans erreur. → [solution : lire une image](#lire-afficher)
 - [ ] Égalisation couleur : en HSV, n'égaliser que V, puis `COLOR_HSV2BGR` avant d'afficher. → [solution : HSV](#s26-couleur)
 - [ ] Linux est sensible à la casse : `Images/` et `images/` sont deux dossiers différents (`imread` renvoie `None` sans erreur). → [solution : lire une image](#lire-afficher)

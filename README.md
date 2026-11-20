@@ -28,10 +28,11 @@ PYTHONPATH=.. python3 riz.py Images/rice.png r s
 | `TP4/` | Extraction des pistes d'aéroport par fermetures directionnelles, puis nettoyage ouverture/fermeture |
 | `TP5/` | Reconstruction morphologique, ouverture et fermeture conditionnelles, comptage et caractérisation des grains de riz (épaisseur, longueur, orientation, ellipsoïdalité) |
 | `TP6/` | Ligne de partage des eaux : séparation forêt / bitume sur une route à partir de marqueurs, puis délimitation de pièces qui se touchent (ASF, carte de distance, h-maxima, étiquetage des marqueurs) |
+| `TP7/` | Histogrammes : égalisation d'histogramme d'une image en niveaux de gris, puis d'une image couleur (canaux séparés contre HSV, en n'égalisant que V) |
 
 ## Documentation
 
-`couteau_suisse_tp.md` est un aide-mémoire de TP1 à TP6 : pour chaque outil (érosion, ouverture, top-hat, reconstruction, mesures sur les grains, ligne de partage des eaux, h-maxima...), l'idée, un schéma, le pourquoi, le code et les pièges, avec un tableau « je veux... » qui renvoie à la bonne section.
+`couteau_suisse_tp.md` est un aide-mémoire de TP1 à TP7 : pour chaque outil (érosion, ouverture, top-hat, reconstruction, mesures sur les grains, ligne de partage des eaux, h-maxima, égalisation d'histogramme...), l'idée, un schéma, le pourquoi, le code et les pièges, avec un tableau « je veux... » qui renvoie à la bonne section.
 
 ## Scripts en ligne de commande
 
@@ -55,4 +56,9 @@ PYTHONPATH=.. python3 tp5_riz.py
 cd TP6
 PYTHONPATH=.. python3 route.py    # frontière forêt / bitume en rouge sur Images/route.png
 PYTHONPATH=.. python3 pieces.py   # bords des pièces de Images/coins.jpg en rouge, puis une couleur par pièce
+
+# TP7 : égalisation d'histogramme d'une image couleur en HSV (seul le canal V est égalisé)
+# Pas d'argument : lit une image de Images/, ouvre l'image d'origine et le résultat
+cd TP7
+PYTHONPATH=.. python3 equilibre_histo.py
 ```
